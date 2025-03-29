@@ -24,11 +24,26 @@ func (b *MemoryBroker) Shutdown(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			b.logger.Warn("Broker shutdown interrupted", zap.Error(ctx.Err()))
+
+			// Stop persistence manager if it exists
+			if b.persistence != nil {
+				b.persistence.Stop()
+			}
+
 			return ctx.Err()
 		case <-ticker.C:
 			// Check if there are any running tasks
 			stats, _ := b.Stats(ctx)
 			if stats.Running == 0 {
+				// Final persistence checkpoint
+				if b.persistence != nil {
+					if err := b.persistence.SaveState(); err != nil {
+						b.logger.Warn("Failed to save final state during shutdown",
+							zap.Error(err))
+					}
+					b.persistence.Stop()
+				}
+
 				b.logger.Info("Broker shutdown complete",
 					zap.Int("total_tasks", stats.Total),
 					zap.Int("completed_tasks", stats.Completed),

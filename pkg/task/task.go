@@ -52,6 +52,9 @@ type Task struct {
 
 	// Metadata
 	Metadata map[string]string `json:"metadata"`
+
+	// Dead Letter Queue
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // NewTask creates a new task with the given type and payload.
@@ -346,4 +349,43 @@ func (t *Task) GetMaxRetries() int {
 // StoreResultInfo stores result information in the task metadata
 func (t *Task) StoreResultInfo(resultInfo string) {
 	t.SetMetadata("result_summary", resultInfo)
+}
+
+// MarkDead marks a task as dead (permanently failed)
+func (t *Task) MarkDead(reason string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	// Only failed tasks can be marked as dead
+	if t.State != StateFailed {
+		return ErrInvalidStateTransition
+	}
+
+	t.State = StateDead
+	t.ErrorMessage = reason
+	t.UpdatedAt = time.Now().UTC()
+
+	return nil
+}
+
+// ResetForRetry resets a dead task for retry
+func (t *Task) ResetForRetry() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	// Only dead tasks can be reset
+	if t.State != StateDead {
+		return ErrInvalidStateTransition
+	}
+
+	t.State = StatePending
+	t.ErrorMessage = ""
+	t.UpdatedAt = time.Now().UTC()
+
+	// Reset retry count if it was maxed out
+	if t.RetryCount >= t.MaxRetries {
+		t.RetryCount = 0
+	}
+
+	return nil
 }

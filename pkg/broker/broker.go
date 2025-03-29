@@ -10,40 +10,30 @@ import (
 // Broker defines the interface for task queue brokers.
 // It handles task submission, distribution, and lifecycle management.
 type Broker interface {
-	// SubmitTask adds a new task to the queue
-	// Returns ErrDuplicateTask if a task with the same idempotency key exists
+	// Task submission and retrieval
 	SubmitTask(ctx context.Context, task *task.Task) error
-
-	// GetTask retrieves a task by its ID
-	// Returns ErrTaskNotFound if the task doesn't exist
 	GetTask(ctx context.Context, id string) (*task.Task, error)
 
-	// NextTask retrieves the next available task for processing
-	// Returns ErrNoTaskAvailable if no tasks are available
+	// Task distribution
 	NextTask(ctx context.Context) (*task.Task, error)
 
-	// CompleteTask marks a task as successfully completed
-	// Returns ErrTaskNotFound if the task doesn't exist
+	// Task lifecycle management
 	CompleteTask(ctx context.Context, id string, result []byte) error
-
-	// FailTask marks a task as failed
-	// Returns ErrTaskNotFound if the task doesn't exist
 	FailTask(ctx context.Context, id string, errMsg string) error
-
-	// RetryTask schedules a failed task for retry
-	// Returns ErrTaskNotFound if the task doesn't exist
-	// Returns ErrMaxRetriesExceeded if the task has reached its retry limit
 	RetryTask(ctx context.Context, id string, backoffSeconds int) error
 
-	// Stats returns current queue statistics
-	Stats(ctx context.Context) (Stats, error)
+	// Dead letter queue management
+	GetDeadLetterTasks(ctx context.Context) ([]*task.Task, error)
+	GetDeadLetterTask(ctx context.Context, id string) (*task.Task, error)
+	RetryDeadLetterTask(ctx context.Context, id string) error
+	DeleteDeadLetterTask(ctx context.Context, id string) error
 
-	// Shutdown gracefully shuts down the broker
-	// It stops accepting new tasks and waits for in-progress tasks to complete
+	// Queue management
+	Stats(ctx context.Context) (Stats, error)
 	Shutdown(ctx context.Context) error
 }
 
-// Stats represents queue statistics
+// Stats represents broker statistics
 type Stats struct {
 	Pending   int       `json:"pending"`
 	Running   int       `json:"running"`

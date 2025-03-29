@@ -47,6 +47,16 @@ func (b *MemoryBroker) CompleteTask(ctx context.Context, id string, result []byt
 		zap.String("task_type", t.GetType()),
 		zap.Int("result_size", len(result)))
 
+	// Trigger persistence checkpoint if enabled
+	if b.persistence != nil {
+		go func() {
+			if err := b.persistence.SaveState(); err != nil {
+				b.logger.Warn("Failed to save state after task completion",
+					zap.Error(err))
+			}
+		}()
+	}
+
 	return nil
 }
 
@@ -73,10 +83,44 @@ func (b *MemoryBroker) FailTask(ctx context.Context, id string, errMsg string) e
 	// Update metrics
 	b.metrics.TasksFailed++
 
-	b.logger.Info("Task failed",
-		zap.String("task_id", id),
-		zap.String("task_type", t.GetType()),
-		zap.String("error", errMsg))
+	// Check if we should retry or move to dead letter queue
+	if t.ShouldRetry() {
+		b.logger.Info("Task failed but will be retried",
+			zap.String("task_id", id),
+			zap.String("task_type", t.GetType()),
+			zap.String("error", errMsg),
+			zap.Int("retry_count", t.GetRetryCount()),
+			zap.Int("max_retries", t.GetMaxRetries()))
+	} else {
+		// Move to dead letter queue
+		err = t.MarkDead("Max retries exceeded: " + errMsg)
+		if err != nil {
+			b.logger.Warn("Failed to mark task as dead",
+				zap.String("task_id", id),
+				zap.Error(err))
+			return err
+		}
+
+		// Add to dead letter queue
+		b.deadLetterQueue.Add(t.Clone())
+
+		b.logger.Info("Task moved to dead letter queue after max retries",
+			zap.String("task_id", id),
+			zap.String("task_type", t.GetType()),
+			zap.String("error", errMsg),
+			zap.Int("retry_count", t.GetRetryCount()),
+			zap.Int("max_retries", t.GetMaxRetries()))
+	}
+
+	// Trigger persistence checkpoint if enabled
+	if b.persistence != nil {
+		go func() {
+			if err := b.persistence.SaveState(); err != nil {
+				b.logger.Warn("Failed to save state after task failure",
+					zap.Error(err))
+			}
+		}()
+	}
 
 	return nil
 }
@@ -126,6 +170,16 @@ func (b *MemoryBroker) RetryTask(ctx context.Context, id string, backoffSeconds 
 		zap.Time("retry_time", retryTime),
 		zap.Int("retry_count", t.GetRetryCount()),
 		zap.Int("backoff_seconds", backoffSeconds))
+
+	// Trigger persistence checkpoint if enabled
+	if b.persistence != nil {
+		go func() {
+			if err := b.persistence.SaveState(); err != nil {
+				b.logger.Warn("Failed to save state after task retry",
+					zap.Error(err))
+			}
+		}()
+	}
 
 	return nil
 }
