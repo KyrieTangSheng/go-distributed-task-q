@@ -389,3 +389,10 @@ func (t *Task) ResetForRetry() error {
 
 	return nil
 }
+
+// GetTimeout returns the task timeout in seconds in a thread-safe manner
+func (t *Task) GetTimeout() int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.Timeout
+}

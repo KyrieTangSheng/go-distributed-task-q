@@ -99,6 +99,15 @@ func (p *PersistenceManager) SaveState() error {
 	filename := filepath.Join(p.options.Directory, "broker-state.json")
 	tempFile := filename + ".tmp"
 
+	// Ensure directory exists before writing
+	dir := filepath.Dir(tempFile)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		p.logger.Error("Failed to create directory",
+			zap.String("directory", dir),
+			zap.Error(err))
+		return err
+	}
+
 	if err := os.WriteFile(tempFile, data, 0644); err != nil {
 		return err
 	}

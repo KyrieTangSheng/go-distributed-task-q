@@ -31,6 +31,9 @@ type Broker interface {
 	// Queue management
 	Stats(ctx context.Context) (Stats, error)
 	Shutdown(ctx context.Context) error
+
+	// MoveToDeadLetter moves a task to the dead letter queue
+	MoveToDeadLetter(ctx context.Context, id string, reason string) error
 }
 
 // Stats represents broker statistics
